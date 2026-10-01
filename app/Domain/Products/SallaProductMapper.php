@@ -10,11 +10,7 @@ final class SallaProductMapper
     {
         $price=$n['sale_price'] ?? $n['regular_price'] ?? null;
         $quantity=$n['stock']['quantity'] ?? null;
-        $images=array_values(array_filter(array_map(static function(array $image): ?array {
-            $src=trim((string)($image['src']??''));
-            if($src==='') return null;
-            return ['original'=>$src,'thumbnail'=>$src,'alt'=>(string)($image['alt']??''),'default'=>(int)($image['position']??0)===0,'sort'=>(int)($image['position']??0)];
-        },$n['images']??[])));
+
         return array_filter([
             'name'=>$n['name']??null,
             'sku'=>$n['sku']??null,
@@ -23,8 +19,37 @@ final class SallaProductMapper
             'quantity'=>$quantity!==null?(int)$quantity:null,
             'weight'=>isset($n['weight'])&&$n['weight']!==null?(float)$n['weight']:null,
             'product_type'=>'product',
-            'images'=>$images?:null,
         ],static fn($v)=>$v!==null&&$v!=='');
+    }
+
+    public function images(array $n): array
+    {
+        $images=[];
+        foreach($n['images']??[] as $image){
+            $src=trim((string)($image['src']??''));
+            if($src==='') continue;
+            $images[$src]=[
+                'url'=>$src,
+                'alt'=>(string)($image['alt']??''),
+                'default'=>count($images)===0,
+                'sort'=>count($images)+1,
+            ];
+        }
+
+        foreach($n['variants']??[] as $variant){
+            $image=$variant['image']??null;
+            if(!is_array($image)) continue;
+            $src=trim((string)($image['src']??''));
+            if($src===''||isset($images[$src])) continue;
+            $images[$src]=[
+                'url'=>$src,
+                'alt'=>(string)($image['alt']??($n['name']??'')),
+                'default'=>false,
+                'sort'=>count($images)+1,
+            ];
+        }
+
+        return array_slice(array_values($images),0,10);
     }
 
     public function options(array $n): array
