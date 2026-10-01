@@ -13,4 +13,5 @@ jobs:
           coverage: none
       - run: composer install --no-interaction --prefer-dist
       - run: find app bootstrap config database routes tests -name '*.php' -print0 | xargs -0 -n1 php -l
+      - run: bash -n scripts/deploy-hostinger.sh scripts/hostinger-health.sh
       - run: vendor/bin/phpunit
