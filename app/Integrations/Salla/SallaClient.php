@@ -31,6 +31,16 @@ final class SallaClient
         return $this->request()->put("products/variants/{$variantId}", $payload)->throw()->json('data');
     }
 
+    public function searchCategories(string $keyword): array
+    {
+        return $this->request()->get('categories/search', ['keyword' => $keyword])->throw()->json('data', []);
+    }
+
+    public function createCategory(array $payload): array
+    {
+        return $this->request()->post('categories', $payload)->throw()->json('data');
+    }
+
     public function product(int|string $productId): array
     {
         return $this->request()->get("products/{$productId}")->throw()->json('data');
