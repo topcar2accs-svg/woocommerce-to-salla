@@ -6,6 +6,7 @@ namespace App\Integrations\Salla;
 
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
+use RuntimeException;
 
 final class SallaClient
 {
@@ -14,6 +15,17 @@ final class SallaClient
     public function createProduct(array $payload): array
     {
         return $this->request()->post('products', $payload)->throw()->json('data');
+    }
+
+    public function deleteProduct(int|string $productId): void
+    {
+        $response = $this->request()->delete("products/{$productId}");
+
+        if ($response->successful() || $response->status() === 404) {
+            return;
+        }
+
+        throw new RuntimeException("Unable to remove incomplete Salla product {$productId}: HTTP {$response->status()}.");
     }
 
     public function attachImage(int|string $productId, string $url, bool $default=false, int $sort=1, string $alt=''): array
