@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
 
 final class SaasController extends Controller
@@ -94,14 +95,23 @@ final class SaasController extends Controller
         $import=Import::query()->where('merchant_id',$merchant->id)->findOrFail($importId);
         abort_unless(in_array($import->status,['scanned','partial','failed'],true),Response::HTTP_CONFLICT,'Import is not ready.');
 
-        $ids=$request->input('product_ids');
+        $data=$request->validate([
+            'product_ids'=>['required','array','min:1','max:500'],
+            'product_ids.*'=>['required','uuid','distinct'],
+        ]);
+
+        $requestedIds=array_values($data['product_ids']);
         $products=ImportProduct::query()
             ->where('import_id',$import->id)
             ->whereIn('import_status',['pending','failed'])
-            ->when(is_array($ids)&&$ids!==[],fn(Builder $q)=>$q->whereIn('id',$ids))
+            ->whereIn('id',$requestedIds)
             ->get(['id']);
 
-        abort_if($products->isEmpty(),Response::HTTP_CONFLICT,'There are no products ready to import.');
+        if($products->count()!==count($requestedIds)){
+            throw ValidationException::withMessages([
+                'product_ids'=>['Some selected products do not belong to this import or are no longer eligible to run. Refresh the report and select again.'],
+            ]);
+        }
 
         $this->queueProducts($import,$products->pluck('id')->all());
 
@@ -135,13 +145,22 @@ final class SaasController extends Controller
         $merchant=$this->merchant($request);
         $import=Import::query()->where('merchant_id',$merchant->id)->findOrFail($importId);
         $status=$request->query('status');
+        $search=trim((string)$request->query('q',''));
+        $perPage=max(10,min(100,(int)$request->query('per_page',50)));
 
         $products=ImportProduct::query()
             ->where('import_id',$import->id)
             ->when(is_string($status)&&$status!=='',fn(Builder $q)=>$q->where('import_status',$status))
+            ->when($search!=='',function(Builder $q) use($search): void {
+                $q->where(function(Builder $sub) use($search): void {
+                    $sub->where('name','like','%'.$search.'%')
+                        ->orWhere('sku','like','%'.$search.'%')
+                        ->orWhere('source_product_id',$search);
+                });
+            })
             ->orderByRaw("FIELD(import_status, 'failed', 'processing', 'pending', 'completed')")
             ->orderBy('name')
-            ->paginate(50,[
+            ->paginate($perPage,[
                 'id','source_product_id','destination_product_id','source_type','name','sku',
                 'validation_status','import_status','verification_status','current_step','last_error','updated_at',
             ]);
