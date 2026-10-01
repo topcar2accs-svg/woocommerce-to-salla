@@ -9,6 +9,6 @@ final class VariantSignatureTest extends TestCase
     {
         $a=[['name'=>'Size','option'=>'L'],['name'=>'Color','option'=>'Black']];
         $b=array_reverse($a);
-        self::assertSame(VariantSignature::fromAttributes($a), VariantSignature::fromAttributes($b));
+        self::assertSame(VariantSignature::make($a), VariantSignature::make($b));
     }
 }
