@@ -34,6 +34,15 @@ final class ImportProductToSalla implements ShouldQueue
             $categoryIds=$this->resolveCategories($client,$normalized['categories']??[]);
             if($categoryIds!==[]) $payload['categories']=array_map(static fn(int $id)=>['id'=>$id],$categoryIds);
             $created=$client->createProduct($payload); $sallaId=(int)($created['id']??0); if($sallaId<1) throw new \RuntimeException('Salla did not return a product id.');
+
+            $images=$mapper->images($normalized);
+            if($images!==[]){
+                $item->update(['destination_product_id'=>$sallaId,'current_step'=>'images']);
+                foreach($images as $image){
+                    $client->attachImage($sallaId,$image['url'],(bool)$image['default'],(int)$image['sort'],(string)$image['alt']);
+                }
+            }
+
             $item->update(['destination_product_id'=>$sallaId,'current_step'=>'options']);
             $optionValueIds=[];
             foreach($mapper->options($normalized) as $option){
@@ -71,8 +80,15 @@ final class ImportProductToSalla implements ShouldQueue
                     if($variantPayload!==[]) $client->updateVariant((int)$target['id'],$variantPayload);
                 }
             }
+
+            $item->update(['current_step'=>'verify']);
+            $verified=$client->product($sallaId);
+            if((int)($verified['id']??0)!==$sallaId) throw new \RuntimeException('Unable to verify the created Salla product.');
+            if($images!==[]&&empty($verified['images'])&&empty($verified['main_image'])) throw new \RuntimeException('Salla product was created but its images could not be verified.');
+
             DB::table('product_mappings')->insert(['merchant_id'=>$merchant->id,'woocommerce_connection_id'=>$import->woocommerce_connection_id,'source_product_id'=>$item->source_product_id,'salla_product_id'=>$sallaId,'created_at'=>now(),'updated_at'=>now()]);
-            $item->update(['destination_product_id'=>$sallaId,'import_status'=>'completed','verification_status'=>'created','current_step'=>'done','last_error'=>null]); $this->recount($import);
+            $verification=$images===[]?'created_without_source_images':'verified';
+            $item->update(['destination_product_id'=>$sallaId,'import_status'=>'completed','verification_status'=>$verification,'current_step'=>'done','last_error'=>null]); $this->recount($import);
         } catch(Throwable $e){$item->update(['import_status'=>'failed','current_step'=>'failed','last_error'=>mb_substr($e->getMessage(),0,4000)]);$this->recount($import);throw $e;}
     }
     private function resolveCategories(SallaClient $client,array $categories): array
