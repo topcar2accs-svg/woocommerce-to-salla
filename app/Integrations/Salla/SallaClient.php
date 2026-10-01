@@ -26,6 +26,11 @@ final class SallaClient
         return $this->request()->get("products/{$productId}/variants")->throw()->json('data', []);
     }
 
+    public function updateVariant(int|string $variantId, array $payload): array
+    {
+        return $this->request()->put("products/variants/{$variantId}", $payload)->throw()->json('data');
+    }
+
     public function product(int|string $productId): array
     {
         return $this->request()->get("products/{$productId}")->throw()->json('data');
