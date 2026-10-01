@@ -8,12 +8,12 @@ final class SafeStoreUrlTest extends TestCase
     public function test_rejects_non_https_url(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        SafeStoreUrl::assertAllowed('http://example.com');
+        SafeStoreUrl::assert('http://example.com');
     }
 
     public function test_rejects_localhost_url(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        SafeStoreUrl::assertAllowed('https://localhost');
+        SafeStoreUrl::assert('https://localhost');
     }
 }
