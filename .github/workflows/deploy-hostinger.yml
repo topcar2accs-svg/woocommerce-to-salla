@@ -1,0 +1,68 @@
+name: Deploy Hostinger
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+concurrency:
+  group: hostinger-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate required deployment secrets
+        shell: bash
+        env:
+          HOSTINGER_HOST: ${{ secrets.HOSTINGER_HOST }}
+          HOSTINGER_PORT: ${{ secrets.HOSTINGER_PORT }}
+          HOSTINGER_USER: ${{ secrets.HOSTINGER_USER }}
+          HOSTINGER_SSH_KEY: ${{ secrets.HOSTINGER_SSH_KEY }}
+          HOSTINGER_APP_ROOT: ${{ secrets.HOSTINGER_APP_ROOT }}
+          HOSTINGER_PUBLIC_ROOT: ${{ secrets.HOSTINGER_PUBLIC_ROOT }}
+          APP_URL: ${{ secrets.APP_URL }}
+        run: |
+          set -euo pipefail
+          for name in HOSTINGER_HOST HOSTINGER_PORT HOSTINGER_USER HOSTINGER_SSH_KEY HOSTINGER_APP_ROOT HOSTINGER_PUBLIC_ROOT APP_URL; do
+            test -n "${!name:-}" || { echo "Missing required secret: $name"; exit 1; }
+          done
+          [[ "$APP_URL" == https://* ]] || { echo "APP_URL must use https://"; exit 1; }
+
+      - name: Configure SSH
+        shell: bash
+        env:
+          HOSTINGER_HOST: ${{ secrets.HOSTINGER_HOST }}
+          HOSTINGER_PORT: ${{ secrets.HOSTINGER_PORT }}
+          HOSTINGER_SSH_KEY: ${{ secrets.HOSTINGER_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$HOSTINGER_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -p "$HOSTINGER_PORT" -H "$HOSTINGER_HOST" >> ~/.ssh/known_hosts
+
+      - name: Deploy main to Hostinger
+        shell: bash
+        env:
+          HOSTINGER_HOST: ${{ secrets.HOSTINGER_HOST }}
+          HOSTINGER_PORT: ${{ secrets.HOSTINGER_PORT }}
+          HOSTINGER_USER: ${{ secrets.HOSTINGER_USER }}
+          HOSTINGER_APP_ROOT: ${{ secrets.HOSTINGER_APP_ROOT }}
+          HOSTINGER_PUBLIC_ROOT: ${{ secrets.HOSTINGER_PUBLIC_ROOT }}
+        run: |
+          set -euo pipefail
+          ssh -p "$HOSTINGER_PORT" "$HOSTINGER_USER@$HOSTINGER_HOST" \
+            "cd '$HOSTINGER_APP_ROOT' && APP_ROOT='$HOSTINGER_APP_ROOT' PUBLIC_ROOT='$HOSTINGER_PUBLIC_ROOT' BRANCH=main INSTALL_CRON=1 bash scripts/deploy-hostinger.sh"
+
+      - name: Post-deploy smoke test
+        shell: bash
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+        run: |
+          set -euo pipefail
+          APP_URL="$APP_URL" bash scripts/post-deploy-smoke.sh
