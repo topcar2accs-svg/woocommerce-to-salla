@@ -11,4 +11,5 @@ Route::prefix('v1')->middleware(['web','salla.merchant'])->group(function () {
     Route::post('/imports',[SaasController::class,'createImport']);
     Route::get('/imports/{importId}',[SaasController::class,'showImport']);
     Route::post('/imports/{importId}/run',[SaasController::class,'importProducts']);
+    Route::post('/imports/{importId}/retry-failed',[SaasController::class,'retryFailed']);
 });
