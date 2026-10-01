@@ -16,6 +16,17 @@ final class SallaClient
         return $this->request()->post('products', $payload)->throw()->json('data');
     }
 
+    public function attachImage(int|string $productId, string $url, bool $default=false, int $sort=1, string $alt=''): array
+    {
+        return $this->request()->asMultipart()->post("products/{$productId}/images", [
+            ['name'=>'original','contents'=>$url],
+            ['name'=>'default','contents'=>$default?'1':'0'],
+            ['name'=>'main','contents'=>$default?'true':'false'],
+            ['name'=>'sort','contents'=>(string)$sort],
+            ['name'=>'alt','contents'=>$alt],
+        ])->throw()->json('data');
+    }
+
     public function createOption(int|string $productId, array $payload): array
     {
         return $this->request()->post("products/{$productId}/options", $payload)->throw()->json('data');
