@@ -1,11 +1,19 @@
 <?php
 
 use App\Integrations\WooCommerce\SafeStoreUrl;
+use PHPUnit\Framework\TestCase;
 
-it('rejects non https WooCommerce urls', function () {
-    SafeStoreUrl::assertAllowed('http://example.com');
-})->throws(InvalidArgumentException::class);
+final class SafeStoreUrlTest extends TestCase
+{
+    public function test_rejects_non_https_url(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        SafeStoreUrl::assertAllowed('http://example.com');
+    }
 
-it('rejects localhost WooCommerce urls', function () {
-    SafeStoreUrl::assertAllowed('https://localhost');
-})->throws(InvalidArgumentException::class);
+    public function test_rejects_localhost_url(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        SafeStoreUrl::assertAllowed('https://localhost');
+    }
+}
