@@ -6,7 +6,6 @@ namespace App\Integrations\WooCommerce;
 
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
-use InvalidArgumentException;
 
 final class WooCommerceClient
 {
@@ -15,7 +14,7 @@ final class WooCommerceClient
         private readonly string $consumerKey,
         private readonly string $consumerSecret,
     ) {
-        $this->assertSafeStoreUrl($storeUrl);
+        SafeStoreUrl::assert($storeUrl);
     }
 
     public function testConnection(): array
@@ -40,28 +39,15 @@ final class WooCommerceClient
 
     private function request(): PendingRequest
     {
+        // Re-resolve immediately before each outbound request to reduce DNS-rebinding exposure.
+        SafeStoreUrl::assert($this->storeUrl);
         $base = rtrim($this->storeUrl, '/').'/wp-json/'.config('services.woocommerce.version', 'wc/v3').'/';
 
         return Http::baseUrl($base)
             ->withBasicAuth($this->consumerKey, $this->consumerSecret)
             ->acceptJson()
             ->timeout((int) config('services.woocommerce.timeout', 30))
+            ->withOptions(['allow_redirects' => false])
             ->retry(3, 500, throw: false);
-    }
-
-    private function assertSafeStoreUrl(string $url): void
-    {
-        $parts = parse_url($url);
-        if (($parts['scheme'] ?? null) !== 'https' || empty($parts['host'])) {
-            throw new InvalidArgumentException('WooCommerce store URL must be a valid HTTPS URL.');
-        }
-
-        $host = strtolower($parts['host']);
-        if ($host === 'localhost' || str_ends_with($host, '.local')) {
-            throw new InvalidArgumentException('Local WooCommerce hosts are not allowed.');
-        }
-
-        // Production must additionally resolve DNS and reject private/link-local IPs after
-        // resolution and after every redirect to prevent SSRF/DNS-rebinding attacks.
     }
 }
