@@ -30,7 +30,10 @@ final class ImportProductToSalla implements ShouldQueue
             $existing=DB::table('product_mappings')->where(['merchant_id'=>$merchant->id,'woocommerce_connection_id'=>$import->woocommerce_connection_id,'source_product_id'=>$item->source_product_id])->first();
             if($existing){$item->update(['destination_product_id'=>$existing->salla_product_id,'import_status'=>'completed','verification_status'=>'mapped','current_step'=>'done','last_error'=>null]);$this->recount($import);return;}
             $normalized=$item->normalized_data; $client=new SallaClient($merchant->access_token);
-            $created=$client->createProduct($mapper->map($normalized)); $sallaId=(int)($created['id']??0); if($sallaId<1) throw new \RuntimeException('Salla did not return a product id.');
+            $payload=$mapper->map($normalized);
+            $categoryIds=$this->resolveCategories($client,$normalized['categories']??[]);
+            if($categoryIds!==[]) $payload['categories']=array_map(static fn(int $id)=>['id'=>$id],$categoryIds);
+            $created=$client->createProduct($payload); $sallaId=(int)($created['id']??0); if($sallaId<1) throw new \RuntimeException('Salla did not return a product id.');
             $item->update(['destination_product_id'=>$sallaId,'current_step'=>'options']);
             $optionValueIds=[];
             foreach($mapper->options($normalized) as $option){
@@ -58,19 +61,32 @@ final class ImportProductToSalla implements ShouldQueue
                     }
                     sort($ids,SORT_NUMERIC); $target=$byValues[implode(':',$ids)]??null;
                     if(!$target) throw new \RuntimeException('Unable to match WooCommerce variation '.$sourceVariant['source_id'].' to a Salla variant.');
-                    $payload=array_filter([
+                    $variantPayload=array_filter([
                         'sku'=>$sourceVariant['sku']??null,
                         'price'=>isset($sourceVariant['regular_price'])&&$sourceVariant['regular_price']!==null?(float)$sourceVariant['regular_price']:null,
                         'sale_price'=>isset($sourceVariant['sale_price'])&&$sourceVariant['sale_price']!==null?(float)$sourceVariant['sale_price']:null,
                         'stock_quantity'=>$sourceVariant['stock_quantity']??null,
                         'weight'=>isset($sourceVariant['weight'])&&$sourceVariant['weight']!==null?(float)$sourceVariant['weight']:null,
                     ],static fn($v)=>$v!==null&&$v!=='');
-                    if($payload!==[]) $client->updateVariant((int)$target['id'],$payload);
+                    if($variantPayload!==[]) $client->updateVariant((int)$target['id'],$variantPayload);
                 }
             }
             DB::table('product_mappings')->insert(['merchant_id'=>$merchant->id,'woocommerce_connection_id'=>$import->woocommerce_connection_id,'source_product_id'=>$item->source_product_id,'salla_product_id'=>$sallaId,'created_at'=>now(),'updated_at'=>now()]);
             $item->update(['destination_product_id'=>$sallaId,'import_status'=>'completed','verification_status'=>'created','current_step'=>'done','last_error'=>null]); $this->recount($import);
         } catch(Throwable $e){$item->update(['import_status'=>'failed','current_step'=>'failed','last_error'=>mb_substr($e->getMessage(),0,4000)]);$this->recount($import);throw $e;}
+    }
+    private function resolveCategories(SallaClient $client,array $categories): array
+    {
+        $ids=[];
+        foreach($categories as $sourceCategory){
+            $name=trim((string)($sourceCategory['name']??'')); if($name==='') continue;
+            $matches=$client->searchCategories($name); $target=null;
+            foreach($matches as $match){if($this->key((string)($match['name']??''))===$this->key($name)){$target=$match;break;}}
+            if(!$target) $target=$client->createCategory(['name'=>$name,'status'=>'active']);
+            $id=(int)($target['id']??0); if($id<1) throw new \RuntimeException("Salla did not return a category id for {$name}.");
+            $ids[$id]=$id;
+        }
+        return array_values($ids);
     }
     private function key(string $value): string
     {
